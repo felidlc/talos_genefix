@@ -732,19 +732,13 @@ def annotate_category_deeprvat(mt: hl.MatrixTable) -> hl.MatrixTable:
     - Variant-level DeepRVAT score
     - Threshold configurable via RunHailFiltering.deeprvat
     """
-
-    # skip gracefully if DeepRVAT annotation is missing
-    if 'deeprvat' not in mt.info:
-        return mt.annotate_rows(
-            info=mt.info.annotate(categorybooleandeeprvat=MISSING_INT),
-        )
-
-    threshold = config_retrieve(['RunHailFiltering', 'deeprvat_score'])
+    
+    threshold = config_retrieve(['RunHailFiltering', 'deeprvat_threshold'])
 
     return mt.annotate_rows(
         info=mt.info.annotate(
             categorybooleandeeprvat=hl.if_else(
-                mt.info.deeprvat_score >= threshold,
+                hl.len(mt.transcript_consequences.filter(lambda x: x.deeprvat_score >= threshold )) > 0,
                 ONE_INT,
                 MISSING_INT,
             ),
@@ -806,7 +800,7 @@ def filter_to_categorised(mt: hl.MatrixTable) -> hl.MatrixTable:
         | (mt.info.categorysampledenovo != MISSING_STRING)
         | (mt.info.categorydetailspm5 != MISSING_STRING)
         | (mt.info.categorybooleansvdb == 1)
-        | (mt.info.categorydetailsexomiser != MISSING_STRING),
+        | (mt.info.categorydetailsexomiser != MISSING_STRING)
         | (mt.info.categorybooleandeeprvat == 1)
     )
 
@@ -1071,10 +1065,7 @@ def main(  # noqa: PLR0915
     mt = annotate_category_alphamissense(mt=mt)
     mt = annotate_category_high_impact(mt=mt)
     mt = annotate_category_spliceai(mt=mt)
-    if 'deeprvat' in ignored_categories:
-        mt = mt.annotate_rows(info=mt.info.annotate(categorybooleandeeprvat=MISSING_INT))
-    else:
-        mt = annotate_category_deeprvat(mt=mt)
+    mt = annotate_category_deeprvat(mt=mt)
 
     # insert easy ignore of de novo filtering based on config, to overcome some data format issues
     if any(to_ignore in ignored_categories for to_ignore in ['de_novo', 'denovo', '4']) or config_retrieve(

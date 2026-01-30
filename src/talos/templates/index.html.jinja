@@ -581,7 +581,7 @@
                 html += '<div class="table-responsive"><table class="table table-sm table-striped">';
                 html += '<thead class="table-dark"><tr>';
                 html += '<th>Gene</th><th>Transcript</th><th>Protein change</th><th>Consequence</th>';
-                html += '<th>Biotype</th><th>AlphaMissense</th>';
+                html += '<th>Biotype</th><th>AlphaMissense</th><th>DeepRVAT</th>';
                 html += '</tr></thead><tbody>';
 
                 transcriptConsequences.forEach(function(csq) {
@@ -602,6 +602,7 @@
                         if (csq.am_pathogenicity && typeof csq.am_pathogenicity === 'number') {
                             html += ' (' + csq.am_pathogenicity.toFixed(2) + ')';
                         }
+                        html += '<td>' + escapeHtml(csq.deeprvat_impairment || '');
                         html += '</td></tr>';
                     }
                 });
