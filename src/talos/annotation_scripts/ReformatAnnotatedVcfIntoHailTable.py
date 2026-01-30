@@ -172,6 +172,34 @@ def insert_am_annotations(ht: hl.Table, am_table: str) -> hl.Table:
     )
 
 
+def insert_deeprvat_annotations(ht: hl.Table, deeprvat_table: str) -> hl.Table:
+    """
+    Load up a Hail Table of DeepRVAT annotations, and annotate this data unless the deeprvat annotations already exist.
+    """
+
+    logger.info(f'Reading DeepRVAT annotations from {deeprvat_table} and applying to MT')
+
+    # read in the hail table containing alpha missense annotations
+    deeprvat_ht = hl.read_table(deeprvat_table)
+
+    # DeepRVAT consequence matching needs conditional application based on the specific transcript match
+    return ht.annotate(
+        transcript_consequences=hl.map(
+            lambda x: x.annotate(
+                deeprvat_impairment=hl.or_else(
+                    deeprvat_ht[ht.key].deeprvat_impairment,
+                    MISSING_STRING
+                ),
+                deeprvat_score=hl.or_else(
+                    deeprvat_ht[ht.key].deeprvat_score,
+                    MISSING_FLOAT
+                )
+            ),
+            ht.transcript_consequences
+        )
+    )   
+
+
 def apply_mane_annotations(ht: hl.Table, mane_path: str | None = None) -> hl.Table:
     """
     Apply MANE annotations to the VCF.
@@ -228,6 +256,7 @@ def cli_main():
     parser.add_argument('--output', help='output Table path, must have a ".ht" extension', required=True)
     parser.add_argument('--gene_bed', help='BED file containing gene mapping')
     parser.add_argument('--am', help='Hail Table containing AlphaMissense annotations', required=True)
+    parser.add_argument('--deeprvat', help='Hail Table containing DeepRVAT annotations', required=True)
     parser.add_argument('--mane', help='Hail Table containing MANE annotations', default=None)
     parser.add_argument(
         '--checkpoint',
@@ -241,6 +270,7 @@ def cli_main():
         output_path=args.output,
         gene_bed=args.gene_bed,
         alpha_m=args.am,
+        deeprvat=args.deeprvat,
         mane=args.mane,
         checkpoint=args.checkpoint,
     )
@@ -251,6 +281,7 @@ def main(
     output_path: str,
     gene_bed: str,
     alpha_m: str,
+    deeprvat: str,
     mane: str | None = None,
     checkpoint: str | None = None,
 ):
@@ -294,6 +325,9 @@ def main(
 
     # add AlphaMissense scores
     ht = insert_am_annotations(ht, am_table=alpha_m)
+
+    # add DeepRVAT scores
+    ht = insert_deeprvat_annotations(ht, deeprvat)
 
     # drop the BCSQ field
     ht = ht.annotate(info=ht.info.drop('BCSQ'))

@@ -625,8 +625,22 @@ class Variant:
             if isinstance(self.var_data, SmallVariant)
             else []
         )
-
         self.var_data.info['alpha_missense_max'] = max(am_scores) if am_scores else 'missing'
+
+
+        # pull up the highest DeepRVAT score, if present
+        deeprvat_scores = (
+            [
+                float(csq['score'])
+                for csq in self.var_data.transcript_consequences
+                if csq.get('score')
+            ]
+            if isinstance(self.var_data, SmallVariant)
+            else []
+        )
+        self.var_data.info['deeprvat_max'] = max(deeprvat_scores) if deeprvat_scores else 'missing'
+
+
 
         # this is the weird gnomad callset ID
         if (

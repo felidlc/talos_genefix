@@ -9,6 +9,7 @@ The specific annotations are:
 - gnomAD v4.1 frequencies, applied to the joint VCF using echtvar
 - Transcript consequences, using BCFtools annotate
 - AlphaMissense, applied using Hail
+- DeepRVAT, applied using Hail
 - MANE trancript IDs and corresponding proteins, applied using Hail
 */
 
@@ -21,6 +22,7 @@ include { FilterVcfToBedWithBcftools } from './modules/annotation/FilterVcfToBed
 include { MakeSitesOnlyVcfWithBcftools } from './modules/annotation/MakeSitesOnlyVcfWithBcftools/main'
 include { MergeVcfsWithBcftools } from './modules/annotation/MergeVcfsWithBcftools/main'
 include { ParseAlphaMissenseIntoHt } from './modules/annotation/ParseAlphaMissenseIntoHt/main'
+include { ParseDeepRVATIntoHt } from './modules/annotation/ParseDeepRVATIntoHt/main'
 include { ParseManeIntoJson } from './modules/annotation/ParseManeIntoJson/main'
 include { ReformatAnnotatedVcfIntoHailTable } from './modules/annotation/ReformatAnnotatedVcfIntoHailTable/main'
 include { TransferAnnotationsToMatrixTable } from './modules/annotation/TransferAnnotationsToMatrixTable/main'
@@ -50,6 +52,23 @@ workflow {
         ch_alphamissense_table = ParseAlphaMissenseIntoHt.out
     }
 
+	// generate the DeepRVAT HT
+    // read in as a channel if this was already generated
+    if (file(params.deeprvat_tar).exists()) {
+        ch_deeprvat_table = channel.fromPath(
+        	params.deeprvat_tar,
+        	checkIfExists: true
+		)
+    }
+    else {
+    	ch_deeprvat_tsv = channel.fromPath(
+    		params.deeprvat_tsv,
+    		checkIfExists: true
+		)
+        ParseDeepRVATIntoHt(ch_deeprvat_tsv)
+        ch_deeprvat_table = ParseDeepRVATIntoHt.out
+    }
+
     // generate the Region-of-interest BED file from Ensembl GFF3
     // generates a per-gene BED file with ID annotations
     // and a overlap-merged version of the same for more efficient region filtering
@@ -71,7 +90,7 @@ workflow {
 	}
 
 	// if a merged VCF is provided, don't implement a manual merge - start from an externally completed dataset
-	if (file(params.merged_vcf).exists()) {
+        if (file(params.merged_vcf).exists()) {
 		ch_merged_vcf = channel.fromPath(params.merged_vcf, checkIfExists: true)
 		ch_merged_index = channel.fromPath("${params.merged_vcf}.tbi", checkIfExists: true)
 
@@ -139,6 +158,7 @@ workflow {
     ReformatAnnotatedVcfIntoHailTable(
         AnnotateCsqWithBcftools.out,
         ch_alphamissense_table,
+		ch_deeprvat_table,
         ch_bed,
         ch_mane,
     )

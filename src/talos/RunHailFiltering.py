@@ -725,6 +725,32 @@ def annotate_category_de_novo(
         info=mt.info.annotate(categorysampledenovo=hl.or_else(dn_table[mt.row_key].dn_ids, MISSING_STRING)),
     )
 
+def annotate_category_deeprvat(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Applies the DeepRVAT category flag
+
+    - Variant-level DeepRVAT score
+    - Threshold configurable via RunHailFiltering.deeprvat
+    """
+
+    # skip gracefully if DeepRVAT annotation is missing
+    if 'deeprvat' not in mt.info:
+        return mt.annotate_rows(
+            info=mt.info.annotate(categorybooleandeeprvat=MISSING_INT),
+        )
+
+    threshold = config_retrieve(['RunHailFiltering', 'deeprvat_score'])
+
+    return mt.annotate_rows(
+        info=mt.info.annotate(
+            categorybooleandeeprvat=hl.if_else(
+                mt.info.deeprvat_score >= threshold,
+                ONE_INT,
+                MISSING_INT,
+            ),
+        ),
+    )
+
 
 def csq_struct_to_string(tx_expr: hl.expr.StructExpression) -> hl.expr.ArrayExpression:
     """
@@ -781,6 +807,7 @@ def filter_to_categorised(mt: hl.MatrixTable) -> hl.MatrixTable:
         | (mt.info.categorydetailspm5 != MISSING_STRING)
         | (mt.info.categorybooleansvdb == 1)
         | (mt.info.categorydetailsexomiser != MISSING_STRING),
+        | (mt.info.categorybooleandeeprvat == 1)
     )
 
 
@@ -1044,6 +1071,10 @@ def main(  # noqa: PLR0915
     mt = annotate_category_alphamissense(mt=mt)
     mt = annotate_category_high_impact(mt=mt)
     mt = annotate_category_spliceai(mt=mt)
+    if 'deeprvat' in ignored_categories:
+        mt = mt.annotate_rows(info=mt.info.annotate(categorybooleandeeprvat=MISSING_INT))
+    else:
+        mt = annotate_category_deeprvat(mt=mt)
 
     # insert easy ignore of de novo filtering based on config, to overcome some data format issues
     if any(to_ignore in ignored_categories for to_ignore in ['de_novo', 'denovo', '4']) or config_retrieve(
