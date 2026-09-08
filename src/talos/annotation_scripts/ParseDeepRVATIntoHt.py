@@ -4,11 +4,14 @@
 Parse DeepRVAT output into a Talos-compatible Hail Table.
 
 Expected input:
-- Per-variant DeepRVAT scores
-- Must include chrom, pos, ref, alt, score
+- Per-variant, per-gene DeepRVAT scores
+- Must include chrom, pos, ref, alt, gene_id, score
+- DeepRVAT is gene-specific (not transcript-specific), so gene_id is
+  part of gene_scores, to correctly disambiguate variants overlapping multiple genes
 
 Output:
-- Hail Table keyed by (locus, alleles)
+- Hail Table keyed by (locus, alleles) 
+- gene_scores: dict field that maps gene_id -> (score, impairment) for each gene variant overlaps 
 """
 
 from argparse import ArgumentParser
@@ -19,7 +22,6 @@ def main(deep_rvat_file: str, ht_out: str):
     hl.init()
     hl.default_reference('GRCh38')
 
-    # Example: TSV input
     ht = hl.import_table(
         deep_rvat_file,
         types={
@@ -27,7 +29,7 @@ def main(deep_rvat_file: str, ht_out: str):
             'pos': hl.tint32,
             'ref': hl.tstr,
             'alt': hl.tstr,
-            'transcript': hl.tstr,
+            'gene_id': hl.tstr,
             'deeprvat_score': hl.tfloat64,
             'deeprvat_impairment': hl.tstr,
         },
@@ -37,14 +39,16 @@ def main(deep_rvat_file: str, ht_out: str):
     ht = ht.transmute(
         locus=hl.locus(ht.chrom, ht.pos),
         alleles=[ht.ref, ht.alt],
-        deeprvat_score=ht.deeprvat_score,
     )
 
-    ht = ht.key_by('locus', 'alleles')
-
+    ht = ht.group_by('locus', 'alleles').aggregate(
+        gene_scores=hl.dict(
+            hl.agg.collect((ht.gene_id, hl.struct(score=ht.deeprvat_score, impairment=ht.deeprvat_impairment)))
+        )
+    )
+    
     ht.write(ht_out, overwrite=True)
     ht.describe()
-
 
 def cli_main():
     parser = ArgumentParser()

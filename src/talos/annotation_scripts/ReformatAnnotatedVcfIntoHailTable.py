@@ -174,31 +174,25 @@ def insert_am_annotations(ht: hl.Table, am_table: str) -> hl.Table:
 
 def insert_deeprvat_annotations(ht: hl.Table, deeprvat_table: str) -> hl.Table:
     """
-    Load up a Hail Table of DeepRVAT annotations, and annotate this data unless the deeprvat annotations already exist.
+    Load up Hail Table of DeepRVAT annotations, and annotate this data unless the DeepRVAT annotations already exist.
+    DeepRVAT scores are gene-specific
+    ht is keyed by (locus, alleles) only, with a gene_scores dict holding each gene score
     """
-
     logger.info(f'Reading DeepRVAT annotations from {deeprvat_table} and applying to MT')
-
-    # read in the hail table containing alpha missense annotations
     deeprvat_ht = hl.read_table(deeprvat_table)
 
-    # DeepRVAT consequence matching needs conditional application based on the specific transcript match
     return ht.annotate(
         transcript_consequences=hl.map(
-            lambda x: x.annotate(
-                deeprvat_impairment=hl.or_else(
-                    deeprvat_ht[ht.key].deeprvat_impairment,
-                    MISSING_STRING
+            lambda x: hl.bind(
+                lambda gene_hit: x.annotate(
+                    deeprvat_impairment=hl.or_else(gene_hit.impairment, MISSING_STRING),
+                    deeprvat_score=hl.or_else(gene_hit.score, MISSING_FLOAT),
                 ),
-                deeprvat_score=hl.or_else(
-                    deeprvat_ht[ht.key].deeprvat_score,
-                    MISSING_FLOAT
-                )
+                deeprvat_ht[ht.key].gene_scores.get(x.gene_id),
             ),
-            ht.transcript_consequences
-        )
-    )   
-
+            ht.transcript_consequences,
+        ),
+    )
 
 def apply_mane_annotations(ht: hl.Table, mane_path: str | None = None) -> hl.Table:
     """
