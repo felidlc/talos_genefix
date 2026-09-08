@@ -23,7 +23,7 @@ process RunHailFiltering {
 
     tar --no-same-owner -zxf ${clinvar}
 
-    python /s/project/cagi7/baselines/talos/src/talos/RunHailFiltering.py \
+    RunHailFiltering \
         --input ${mt} \
         --panelapp ${panelapp_data} \
         --pedigree ${pedigree} \

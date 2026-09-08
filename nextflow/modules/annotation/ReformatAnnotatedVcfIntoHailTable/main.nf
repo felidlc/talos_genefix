@@ -17,7 +17,7 @@ process ReformatAnnotatedVcfIntoHailTable {
         """
         set -ex
 
-         python /s/project/cagi7/baselines/talos/src/talos/annotation_scripts/ReformatAnnotatedVcfIntoHailTable.py \
+         ReformatAnnotatedVcfIntoHailTable \
             --input ${vcf} \
             --am ${alphamissense} \
             --deeprvat ${deeprvat} \

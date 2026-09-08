@@ -23,7 +23,7 @@ process CreateTalosHTML {
     """
     export TALOS_CONFIG=${talos_config}
     mkdir ${params.cohort}_report
-    python /s/project/cagi7/baselines/talos/src/talos/CreateTalosHTML.py \
+    CreateTalosHTML \
         --input ${talos_result_json} \
         --panelapp ${panelapp_data} \
         --output ${params.cohort}_report.html $ext_id_arg $seqr_arg
