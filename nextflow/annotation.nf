@@ -10,6 +10,7 @@ The specific annotations are:
 
 - gnomAD v4.1 frequencies and alphamissense annotations, applied to the joint VCF using echtvar
 - Transcript consequences, using BCFtools annotate
+- DeepRVAT gene-burden scores, applied using Hail
 - MANE trancript IDs and corresponding ENSP IDs, applied using Hail
 */
 
@@ -18,15 +19,16 @@ include { AnnotatedVcfIntoMatrixTable } from './modules/annotation/AnnotatedVcfI
 include { AnnotateWithEchtvar } from './modules/annotation/AnnotateWithEchtvar/main'
 include { MergeVcfsWithBcftools } from './modules/annotation/MergeVcfsWithBcftools/main'
 include { NormaliseAndRegionFilterVcf } from './modules/annotation/NormaliseAndRegionFilterVcf/main'
+include { ParseDeepRVATIntoHt } from './modules/annotation/ParseDeepRVATIntoHt/main'
 include { SplitVcf } from './modules/annotation/SplitVcf/main'
 
 
 workflow ANNOTATION {
-	take:
-		ch_gff
-		ch_mane
-		ch_ref_genome
-		ch_inputs
+take:
+ch_gff
+ch_mane
+ch_ref_genome
+ch_inputs
 
     main:
     // populate various input channels - these are downloaded by the large_files/gather_files.sh script, or the prep wf
@@ -45,6 +47,14 @@ workflow ANNOTATION {
     ch_merged_bed = channel.fromPath(params.ensembl_merged_bed, checkIfExists: true).first()
 
     ch_gnomad_zip = channel.fromPath(params.gnomad_zip, checkIfExists: true).first()
+
+    // generate the DeepRVAT HT from the raw scores TSV
+    // .first() turns this into a reusable "value channel" -- AnnotatedVcfIntoMatrixTable
+    // may run once per VCF shard/cohort, and each of those invocations needs the same
+    // single DeepRVAT HT, not one that gets consumed after the first use
+    ch_deeprvat_tsv = channel.fromPath(params.deeprvat_tsv, checkIfExists: true).first()
+    ParseDeepRVATIntoHt(ch_deeprvat_tsv)
+    ch_deeprvat_ht = ParseDeepRVATIntoHt.out.first()
 
     ch_inputs_branched = ch_inputs.branch {
         shards: it[2] == 'shards'
@@ -92,13 +102,13 @@ workflow ANNOTATION {
     // mix in shards
     ch_all_vcfs = ch_vcfs.mix(ch_from_shards)
 
-	NormaliseAndRegionFilterVcf(
+NormaliseAndRegionFilterVcf(
         ch_all_vcfs,
         ch_merged_bed,
         ch_ref_genome,
     )
 
-	AnnotateWithEchtvar(
+AnnotateWithEchtvar(
         NormaliseAndRegionFilterVcf.out,
         ch_gnomad_zip,
         ch_alphamissense_zip,
@@ -116,8 +126,9 @@ workflow ANNOTATION {
         AnnotateCsqWithBcftools.out,
         ch_bed,
         ch_mane,
+        ch_deeprvat_ht,
     )
 
     emit:
-    	mts = AnnotatedVcfIntoMatrixTable.out.groupTuple(by: 0)
+    mts = AnnotatedVcfIntoMatrixTable.out.groupTuple(by: 0)
 }

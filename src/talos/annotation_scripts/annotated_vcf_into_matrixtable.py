@@ -198,6 +198,42 @@ def annotate_all_transcript_consequences(
     )
 
 
+def annotate_deeprvat_scores(mt: hl.MatrixTable, deeprvat_table: str) -> hl.MatrixTable:
+    """
+    Load the DeepRVAT Hail Table (built by parse_deeprvat_into_ht.py) and annotate each
+    transcript_consequence with its OWN gene's DeepRVAT score.
+
+    DeepRVAT scores are gene-specific, not transcript-specific. deeprvat_table is keyed
+    by (locus, alleles) only, with a gene_scores dict field mapping gene_id -> {score,
+    impairment} for every gene overlapping that variant -- so each transcript looks up
+    its own gene_id's score, rather than one arbitrary value being broadcast onto every
+    gene at that locus (the bug fixed for v8).
+
+    Args:
+        mt (MatrixTable): the MatrixTable to annotate. Must already have gene_id set on
+            transcript_consequences (i.e. run this after annotate_all_transcript_consequences)
+        deeprvat_table (str): path to the DeepRVAT Hail Table
+
+    Returns:
+        Original MatrixTable, with deeprvat_score / deeprvat_impairment added per transcript
+    """
+    logger.info(f'Reading DeepRVAT annotations from {deeprvat_table} and applying to MT')
+    deeprvat_ht = hl.read_table(deeprvat_table)
+
+    return mt.annotate_rows(
+        transcript_consequences=hl.map(
+            lambda x: hl.bind(
+                lambda gene_hit: x.annotate(
+                    deeprvat_impairment=hl.or_else(gene_hit.impairment, MISSING_STRING),
+                    deeprvat_score=hl.or_else(gene_hit.score, MISSING_FLOAT),
+                ),
+                deeprvat_ht[mt.locus, mt.alleles].gene_scores.get(x.gene_id),
+            ),
+            mt.transcript_consequences,
+        ),
+    )
+
+
 def nest_gnomad_in_struct(mt: hl.MatrixTable) -> hl.MatrixTable:
     """Tucks all gnomAD annotations into a hl.Struct"""
     return mt.annotate_rows(
@@ -221,6 +257,7 @@ def cli_main():
     parser.add_argument('--output', help='output Table path, must have a ".ht" extension', required=True)
     parser.add_argument('--gene_bed', help='BED file containing gene mapping')
     parser.add_argument('--mane', help='Hail Table containing MANE annotations', default=None)
+    parser.add_argument('--deeprvat_ht', help='Hail Table containing DeepRVAT annotations', required=True)
     parser.add_argument(
         '--checkpoint',
         help='Whether to use a remote checkpoint. This is an implicit trigger for the batch backend',
@@ -233,6 +270,7 @@ def cli_main():
         output_path=args.output,
         gene_bed=args.gene_bed,
         mane=args.mane,
+        deeprvat_ht=args.deeprvat_ht,
         checkpoint=args.checkpoint,
     )
 
@@ -242,17 +280,19 @@ def main(
     output_path: str,
     gene_bed: str,
     mane: str,
+    deeprvat_ht: str,
     checkpoint: str | None = None,
 ):
     """
     Takes a BCFtools-annotated VCF, reorganises into a Talos-compatible MatrixTable
-    Will annotate at runtime with AlphaMissense annotations
+     Will annotate at runtime with AlphaMissense annotations
 
     Args:
         vcf_path (str): path to the annotated sites-only VCF
         output_path (str): path to write the resulting Hail Table to, must
         gene_bed (str): path to a BED file containing gene IDs, derived from the Ensembl GFF3 file
         mane (str): path to a MANE JSON file for enhanced annotation
+        deeprvat_ht (str): path to the DeepRVAT Hail Table, built by parse_deeprvat_into_ht.py
         checkpoint (str): which hail backend to use. Defaults to
     """
 
@@ -286,6 +326,9 @@ def main(
 
     # in a single loop, update alphamissense annotations, ENSG gene IDs, and MANE status/matched transcripts
     mt = annotate_all_transcript_consequences(mt, mane_dict, ensg_dict)
+
+    # add DeepRVAT scores (gene-specific join, avoids the v8 broadcast bug)
+    mt = annotate_deeprvat_scores(mt, deeprvat_ht)
 
     # get a hold of the geneIds - use some aggregation
     mt = mt.annotate_rows(gene_ids=hl.set(mt.transcript_consequences.map(lambda c: c.gene_id)))
