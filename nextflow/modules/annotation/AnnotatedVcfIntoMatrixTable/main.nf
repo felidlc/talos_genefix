@@ -5,6 +5,7 @@ process AnnotatedVcfIntoMatrixTable {
         tuple val(cohort), path(vcf)
         path gene_bed
         path mane
+        path deeprvat_ht
 
     output:
         tuple val(cohort), path("${vcf.simpleName}_annotations.mt")
@@ -17,7 +18,8 @@ process AnnotatedVcfIntoMatrixTable {
             --input ${vcf} \
             --gene_bed ${gene_bed} \
             --output ${vcf.simpleName}_annotations.mt \
-            --mane ${mane}
+            --mane ${mane} \
+            --deeprvat_ht ${deeprvat_ht}
 
         # tidy up all checkpoints
         rm -r checkpoint*
