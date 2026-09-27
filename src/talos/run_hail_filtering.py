@@ -783,6 +783,21 @@ def csq_struct_to_string(tx_expr: hl.expr.StructExpression) -> hl.expr.ArrayExpr
     # previous consequence filters may make this caution unnecessary
     return hl.or_missing(hl.len(csq) > 0, csq)
 
+#add DeepRVAT category flag
+def annotate_category_deeprvat(mt: hl.MatrixTable) -> hl.MatrixTable:
+
+    threshold = config_retrieve(['RunHailFiltering', 'deeprvat_threshold'])
+
+    return mt.annotate_rows(
+        info=mt.info.annotate(
+            categorybooleandeeprvat=hl.if_else(
+                hl.len(mt.transcript_consequences.filter(lambda x: x.deeprvat_score >= threshold)) > 0,
+                ONE_INT,
+                MISSING_INT,
+            ),
+        ),
+    )
+
 
 def filter_to_categorised(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
@@ -805,7 +820,8 @@ def filter_to_categorised(mt: hl.MatrixTable) -> hl.MatrixTable:
         | (mt.info.categorysampledenovo != MISSING_STRING)
         | (mt.info.categorydetailspm5 != MISSING_STRING)
         | (mt.info.categorybooleansvdb == 1)
-        | (mt.info.categorydetailsexomiser != MISSING_STRING),
+        | (mt.info.categorydetailsexomiser != MISSING_STRING)
+        | (mt.info.categorybooleandeeprvat == 1),
     )
 
 
@@ -1081,6 +1097,7 @@ def main(  # noqa: PLR0915
 
     # if avi, apply the avi category
     mt = annotate_category_avi(mt=mt)
+    mt = annotate_category_deeprvat(mt=mt)
 
     # insert easy ignore of de novo filtering based on config, to overcome some data format issues
     if any(to_ignore in ignored_categories for to_ignore in ['de_novo', 'denovo', '4']) or config_retrieve(
